@@ -19,7 +19,7 @@ The build engines and modification sources are maintained in private repositorie
 
 ## Required Actions secrets
 
-- `STOCK_ENGINE_REPOSITORY`
+- `GAMINGPLUS_ENGINE_REPOSITORY`
 - `PRIVATE_REPO_TOKEN`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHANNEL_ID`
@@ -29,4 +29,4 @@ The build engines and modification sources are maintained in private repositorie
 
 ## Status
 
-The stocktoolbuild launcher is configured. Add the required secrets before running the workflow.
+The GamingPlus launcher is configured. Add the required secrets before running the workflow.
