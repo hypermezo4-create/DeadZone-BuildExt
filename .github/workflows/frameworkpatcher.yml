@@ -263,8 +263,11 @@ jobs:
           cp ../build-config.json .
           python3 - <<'PY'
           import json
+          import os
           import pathlib
+          import re
           import subprocess
+          import urllib.parse
           import urllib.request
           import zipfile
 
@@ -275,10 +278,58 @@ jobs:
               "miui_framework_url": "miui-framework.jar",
           }
           config = json.load(open("build-config.json", encoding="utf-8"))
+
+          def stream_download(request, target, limit):
+              with urllib.request.urlopen(request, timeout=120) as response, target.open("wb") as output:
+                  total = 0
+                  while True:
+                      chunk = response.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      total += len(chunk)
+                      if total > limit:
+                          raise SystemExit("Input JAR exceeds its download limit")
+                      output.write(chunk)
+
+          def download_telegram(file_id, target):
+              token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+              if not token:
+                  raise SystemExit("Private Telegram input support is not configured")
+              try:
+                  query = urllib.parse.urlencode({"file_id": file_id})
+                  metadata_request = urllib.request.Request(
+                      f"https://api.telegram.org/bot{token}/getFile?{query}",
+                      headers={"User-Agent": "DeadZone-BuildService/1.0"},
+                  )
+                  with urllib.request.urlopen(metadata_request, timeout=30) as response:
+                      metadata = json.load(response)
+                  result = metadata.get("result") if metadata.get("ok") is True else None
+                  file_path = result.get("file_path") if isinstance(result, dict) else None
+                  file_size = result.get("file_size") if isinstance(result, dict) else None
+                  if (
+                      not isinstance(file_path, str)
+                      or not re.fullmatch(r"[A-Za-z0-9_./-]{1,512}", file_path)
+                      or ".." in file_path.split("/")
+                      or (isinstance(file_size, int) and file_size > 20_000_000)
+                  ):
+                      raise ValueError("invalid Telegram file metadata")
+                  download_request = urllib.request.Request(
+                      f"https://api.telegram.org/file/bot{token}/{file_path}",
+                      headers={"User-Agent": "DeadZone-BuildService/1.0"},
+                  )
+                  stream_download(download_request, target, 20_000_000)
+              except SystemExit:
+                  raise
+              except Exception:
+                  raise SystemExit(f"Unable to download private Telegram input {target.name}") from None
+
           for key in config["active_inputs"]:
               url = config["urls"][key]
+              telegram_file_id = config["telegram_files"][key]
               target = pathlib.Path(names[key])
-              if "drive.google.com" in url or "docs.google.com" in url:
+              if telegram_file_id:
+                  download_telegram(telegram_file_id, target)
+              elif "drive.google.com" in url or "docs.google.com" in url:
                   subprocess.run(
                       ["python3", "-m", "gdown", "--fuzzy", url, "-O", str(target)],
                       check=True,
@@ -288,16 +339,7 @@ jobs:
                       url,
                       headers={"User-Agent": "DeadZone-BuildService/1.0"},
                   )
-                  with urllib.request.urlopen(request, timeout=120) as response, target.open("wb") as output:
-                      total = 0
-                      while True:
-                          chunk = response.read(1024 * 1024)
-                          if not chunk:
-                              break
-                          total += len(chunk)
-                          if total > 1610612736:
-                              raise SystemExit("Input JAR exceeds the 1.5 GiB limit")
-                          output.write(chunk)
+                  stream_download(request, target, 1610612736)
               size = target.stat().st_size
               if size < 128 or size > 1610612736:
                   raise SystemExit(f"Invalid size for {target.name}")
