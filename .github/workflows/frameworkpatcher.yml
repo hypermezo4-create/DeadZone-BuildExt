@@ -74,7 +74,7 @@ concurrency:
 jobs:
   build:
     name: Build and deliver privately
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 90
     env:
       REQUEST_ID: ${{ inputs.request_id }}
@@ -93,8 +93,6 @@ jobs:
       RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
       RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
       RCLONE_UPLOAD_DIR: module
-      BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
-      CONTROL_BOT_TELEMETRY_URL: https://deadzonebot.fly.dev/telemetry
 
     steps:
       - name: Validate private request contract
@@ -218,18 +216,6 @@ jobs:
               json.dump(config, handle, indent=2)
           PY
 
-      - name: Telemetry - preparing
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key preparing \
-            --stage-state in_progress \
-            --completed-stages 0 \
-            --total-stages 8 \
-            --message "Preparing the FrameworkPatcher build." || true
-
       - name: Checkout DeadZone engine
         uses: actions/checkout@v4
         with:
@@ -243,18 +229,6 @@ jobs:
       - name: Prepare owned module path
         shell: bash
         run: rm -rf engine/templates/framework-patcher-module
-
-      - name: Telemetry - loading build engine
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key loading_engine \
-            --stage-state in_progress \
-            --completed-stages 1 \
-            --total-stages 8 \
-            --message "Loading the build engine." || true
 
       - name: Checkout MEZO module template
         uses: actions/checkout@v4
@@ -279,18 +253,6 @@ jobs:
           python3 -m pip install --disable-pip-version-check gdown
           sudo apt-get update -qq
           sudo apt-get install -y -qq p7zip-full rclone
-
-      - name: Telemetry - installing tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key installing_tools \
-            --stage-state in_progress \
-            --completed-stages 2 \
-            --total-stages 8 \
-            --message "Installing build tools." || true
 
       - name: Download and validate active JAR inputs
         working-directory: engine
@@ -443,18 +405,6 @@ jobs:
               raise SystemExit(return_code)
           PY
 
-      - name: Telemetry - building
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key building \
-            --stage-state in_progress \
-            --completed-stages 3 \
-            --total-stages 8 \
-            --message "Building the module." || true
-
       - name: Reject false success and verify module contents
         working-directory: engine
         shell: bash
@@ -522,18 +472,6 @@ jobs:
           )
           PY
 
-      - name: Telemetry - packaging
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key packaging \
-            --stage-state in_progress \
-            --completed-stages 4 \
-            --total-stages 8 \
-            --message "Packaging the final module." || true
-
       - name: Upload output to Google Drive
         working-directory: engine
         shell: bash
@@ -549,15 +487,7 @@ jobs:
           upload_root="${upload_root#/}"
           upload_root="${upload_root%/}"
           remote_path="${RCLONE_REMOTE_NAME}:${upload_root}/FrameworkPatcher-DeadZone/${REQUEST_ID}/${ARTIFACT}"
-          python3 ../scripts/rclone_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --source "$ARTIFACT" \
-            --destination "$remote_path" \
-            --config "$config_path" \
-            --build-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --completed-stages 5 \
-            --total-stages 8
+          rclone copyto "$ARTIFACT" "$remote_path" --config "$config_path" --checkers 4 --transfers 1
           drive_link="$(rclone link "$remote_path" --config "$config_path")"
           case "$drive_link" in
             https://drive.google.com/*|https://docs.google.com/*) ;;
@@ -570,21 +500,6 @@ jobs:
             echo "ARTIFACT_SHA256=$SHA256"
             echo "ARTIFACT_SIZE=$SIZE"
           } >> "$GITHUB_ENV"
-
-      - name: Telemetry - finalizing
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
-            --stage-state success \
-            --completed-stages 8 \
-            --total-stages 8 \
-            --message "Finalizing the delivery." \
-            --processed-bytes "$SIZE" \
-            --total-bytes "$SIZE" \
-            --artifact-size "$SIZE" || true
 
       - name: Create deadzone-result.json
         working-directory: engine
@@ -617,45 +532,3 @@ jobs:
           path: engine/deadzone-result.json
           if-no-files-found: error
           retention-days: 1
-
-      - name: Telemetry - success
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
-            --stage-state success \
-            --completed-stages 8 \
-            --total-stages 8 \
-            --message "The build completed successfully." \
-            --processed-bytes "$SIZE" \
-            --total-bytes "$SIZE" \
-            --artifact-size "$SIZE" || true
-
-      - name: Telemetry - failure
-        if: failure()
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
-            --stage-state failed \
-            --completed-stages 8 \
-            --total-stages 8 \
-            --message "The build failed." || true
-
-      - name: Telemetry - cancelled
-        if: cancelled()
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
-            --stage-state cancelled \
-            --completed-stages 8 \
-            --total-stages 8 \
-            --message "The build was cancelled." || true
