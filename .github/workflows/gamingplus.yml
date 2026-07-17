@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deadzone-gamingplus
+  group: deadzone-global-build
   cancel-in-progress: false
 
 jobs:
