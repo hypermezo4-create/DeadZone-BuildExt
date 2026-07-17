@@ -250,7 +250,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check gdown
+          python3 -m pip install --user --break-system-packages --disable-pip-version-check gdown
           sudo apt-get update -qq
           sudo apt-get install -y -qq p7zip-full rclone
 
