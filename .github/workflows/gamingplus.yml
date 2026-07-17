@@ -130,7 +130,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --user requests
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install requests
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           sudo bash setup.sh 2>&1 | tee -a build_action.log
 
       - name: Telemetry - installing tools
