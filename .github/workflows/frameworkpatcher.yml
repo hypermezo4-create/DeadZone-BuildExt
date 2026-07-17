@@ -72,7 +72,7 @@ jobs:
       BUILDER_NAME: ${{ inputs.builder_name }}
       RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
       RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
-      RCLONE_UPLOAD_DIR: ${{ secrets.RCLONE_UPLOAD_DIR }}
+      RCLONE_UPLOAD_DIR: module
 
     steps:
       - name: Validate private request contract
