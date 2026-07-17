@@ -40,6 +40,8 @@ jobs:
       RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
       RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
       RCLONE_UPLOAD_DIR: ${{ secrets.RCLONE_UPLOAD_DIR }}
+      BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+      CONTROL_BOT_TELEMETRY_URL: https://deadzonebot.fly.dev/telemetry
       REQUEST_ID: ${{ inputs.request_id }}
       INPUT_URL: ${{ inputs.input_url }}
       BUILDER_NAME: ${{ inputs.builder_name }}
@@ -60,12 +62,36 @@ jobs:
             echo "- builder_name: ${BUILDER_NAME:-manual}"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Telemetry - preparing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key preparing \
+            --stage-state in_progress \
+            --completed-stages 0 \
+            --total-stages 8 \
+            --message "Preparing the GamingPlus build." || true
+
       - name: Clean unused runner files
         shell: bash
         run: |
           docker system prune --all --force || true
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
           sudo apt-get clean || true
+
+      - name: Telemetry - loading build engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key loading_engine \
+            --stage-state in_progress \
+            --completed-stages 1 \
+            --total-stages 8 \
+            --message "Loading the build engine." || true
 
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -107,6 +133,18 @@ jobs:
           python3 -m pip install --user requests
           sudo bash setup.sh 2>&1 | tee -a build_action.log
 
+      - name: Telemetry - installing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key installing_tools \
+            --stage-state in_progress \
+            --completed-stages 2 \
+            --total-stages 8 \
+            --message "Installing build tools." || true
+
       - name: Send start notification
         working-directory: toolbuild
         run: python3 notify.py start "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
@@ -122,6 +160,18 @@ jobs:
           set -euo pipefail
           sudo -E bash build.sh "$INPUT_URL" "${{ github.repository }}" "xst" "$BUILDER_NAME" "$BUILDER_ID" 2>&1 | tee -a build_action.log
 
+      - name: Telemetry - building
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key building \
+            --stage-state in_progress \
+            --completed-stages 3 \
+            --total-stages 8 \
+            --message "Building the ROM." || true
+
       - name: Pack ROM
         working-directory: toolbuild
         shell: bash
@@ -130,12 +180,36 @@ jobs:
           python3 notify.py pack "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
           sudo bash packROM.sh 2>&1 | tee -a build_action.log
 
+      - name: Telemetry - packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key packaging \
+            --stage-state in_progress \
+            --completed-stages 4 \
+            --total-stages 8 \
+            --message "Packaging the ROM." || true
+
       - name: Set up Rclone
         working-directory: toolbuild
         shell: bash
         run: |
           set -euo pipefail
           sudo -E bash uploadROM.sh setup 2>&1 | tee -a build_action.log
+
+      - name: Telemetry - preparing upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key preparing_upload \
+            --stage-state in_progress \
+            --completed-stages 5 \
+            --total-stages 8 \
+            --message "Preparing the upload." || true
 
       - name: Upload ROM
         working-directory: toolbuild
@@ -145,12 +219,37 @@ jobs:
           python3 notify.py upload "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
           sudo -E bash uploadROM.sh 2>&1 | tee -a build_action.log
 
+      - name: Telemetry - uploading
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key uploading \
+            --stage-state in_progress \
+            --completed-stages 6 \
+            --total-stages 8 \
+            --message "Uploading the package." || true
+
       - name: Send success notification
         if: success()
         working-directory: toolbuild
         env:
           NOTIFY_WORKFLOW_CONCLUSION: success
         run: python3 notify.py success "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
+
+      - name: Telemetry - success
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key finalizing \
+            --stage-state success \
+            --completed-stages 8 \
+            --total-stages 8 \
+            --message "The build completed successfully." || true
 
       - name: Send failure notification
         if: failure() && hashFiles('toolbuild/notify.py') != ''
@@ -160,6 +259,19 @@ jobs:
           NOTIFY_ERROR_LOG: build_action.log
         run: python3 notify.py fail "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
 
+      - name: Telemetry - failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key finalizing \
+            --stage-state failed \
+            --completed-stages 8 \
+            --total-stages 8 \
+            --message "The build failed." || true
+
       - name: Send cancellation notification
         if: cancelled() && hashFiles('toolbuild/notify.py') != ''
         working-directory: toolbuild
@@ -167,3 +279,16 @@ jobs:
           NOTIFY_WORKFLOW_CONCLUSION: cancelled
           NOTIFY_ERROR_LOG: build_action.log
         run: python3 notify.py cancelled "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
+
+      - name: Telemetry - cancelled
+        if: cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key finalizing \
+            --stage-state cancelled \
+            --completed-stages 8 \
+            --total-stages 8 \
+            --message "The build was cancelled." || true
