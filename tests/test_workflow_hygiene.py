@@ -65,3 +65,23 @@ def test_workflows_persist_the_real_terminal_stage_context() -> None:
         assert "--stage-key \"$DZ_CURRENT_STAGE_KEY\"" in cancelled_block
         assert "--completed-stages \"$DZ_COMPLETED_STAGES\"" in failure_block
         assert "--completed-stages \"$DZ_COMPLETED_STAGES\"" in cancelled_block
+
+
+def test_frameworkpatcher_upload_stage_is_explicit_and_forward_only() -> None:
+    text = (WORKFLOW_DIR / "frameworkpatcher.yml").read_text(encoding="utf-8")
+    assert "Telemetry - uploading" in text
+    assert "stage-key uploading" in text
+    assert "DZ_COMPLETED_STAGES=6" in text
+    assert '--stage-started-at "$DZ_STAGE_STARTED_AT"' in text
+
+    upload_block = text.split("Telemetry - uploading", 1)[1].split("Upload output to Google Drive", 1)[0]
+    assert "--stage-key uploading" in upload_block
+    assert "--completed-stages 6" in upload_block
+    assert "--stage-key preparing_upload" not in upload_block
+    assert "--completed-stages 5" not in upload_block
+    assert "preparing_upload" not in (WORKFLOW_DIR / "frameworkpatcher.yml").read_text(encoding="utf-8").split("Upload output to Google Drive", 1)[1].split("Telemetry - finalizing start", 1)[0]
+
+
+def test_rclone_helper_does_not_emit_preparing_upload() -> None:
+    text = Path("scripts/rclone_telemetry.py").read_text(encoding="utf-8")
+    assert "preparing_upload" not in text

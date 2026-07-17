@@ -600,6 +600,29 @@ jobs:
             --stage-started-at "$stage_started_at" \
             --message "Preparing the Google Drive upload." || true
 
+      - name: Telemetry - uploading
+        working-directory: engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          source artifact.env
+          echo "DZ_CURRENT_STAGE_KEY=uploading" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=6" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key uploading \
+            --stage-state in_progress \
+            --completed-stages 6 \
+            --total-stages 8 \
+            --build-started-at "$BUILD_STARTED_AT" \
+            --stage-started-at "$stage_started_at" \
+            --processed-bytes 0 \
+            --total-bytes "$SIZE" \
+            --artifact-size "$SIZE" \
+            --message "Uploading the FrameworkPatcher archive to Google Drive." || true
+
       - name: Upload output to Google Drive
         working-directory: engine
         shell: bash

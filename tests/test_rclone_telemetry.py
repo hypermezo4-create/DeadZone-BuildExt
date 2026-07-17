@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import io
+from pathlib import Path
+
+import scripts.rclone_telemetry as rclone_telemetry
 from scripts.rclone_telemetry import TRANSFERRED_RE, _parse_eta, _parse_size
 
 
@@ -40,3 +44,101 @@ def test_transferred_line_matches_metric_output_variants() -> None:
     assert _parse_size(match.group("total")) == 1536
     assert _parse_size(match.group("speed")) == 1250
     assert _parse_eta(match.group("eta")) == 240
+
+
+class _FakeProcess:
+    def __init__(self, returncode: int, stdout: str = "") -> None:
+        self._returncode = returncode
+        self.stdout = io.StringIO(stdout)
+
+    def wait(self) -> int:
+        return self._returncode
+
+
+def test_main_uses_uploading_stage_and_preserves_stage_timestamp(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "archive.zip"
+    source.write_bytes(b"deadzone")
+    calls: list[dict[str, object]] = []
+
+    def fake_send_update(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(rclone_telemetry, "_send_update", fake_send_update)
+    monkeypatch.setattr(rclone_telemetry.subprocess, "Popen", lambda *args, **kwargs: _FakeProcess(0))
+    monkeypatch.setenv("BUILD_PROGRESS_SECRET", "secret")
+    monkeypatch.setenv("CONTROL_BOT_TELEMETRY_URL", "https://example.invalid/telemetry")
+
+    exit_code = rclone_telemetry.main(
+        [
+            "--request-id",
+            "DZ-FP-0001",
+            "--source",
+            str(source),
+            "--destination",
+            "remote:deadzone/archive.zip",
+            "--config",
+            str(tmp_path / "rclone.conf"),
+            "--build-started-at",
+            "2026-07-17T16:00:00Z",
+            "--stage-started-at",
+            "2026-07-17T16:05:00Z",
+            "--stage-key",
+            "uploading",
+            "--completed-stages",
+            "6",
+            "--total-stages",
+            "8",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls
+    assert all(call["stage_key"] != "preparing_upload" for call in calls)
+    assert calls[-1]["stage_key"] == "uploading"
+    assert calls[-1]["stage_state"] == "success"
+    assert calls[-1]["stage_started_at"] == "2026-07-17T16:05:00Z"
+    assert calls[-1]["completed_stages"] == 6
+
+
+def test_main_failed_upload_keeps_uploading_terminal_stage(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "archive.zip"
+    source.write_bytes(b"deadzone")
+    calls: list[dict[str, object]] = []
+
+    def fake_send_update(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(rclone_telemetry, "_send_update", fake_send_update)
+    monkeypatch.setattr(rclone_telemetry.subprocess, "Popen", lambda *args, **kwargs: _FakeProcess(1))
+    monkeypatch.setenv("BUILD_PROGRESS_SECRET", "secret")
+    monkeypatch.setenv("CONTROL_BOT_TELEMETRY_URL", "https://example.invalid/telemetry")
+
+    exit_code = rclone_telemetry.main(
+        [
+            "--request-id",
+            "DZ-FP-0001",
+            "--source",
+            str(source),
+            "--destination",
+            "remote:deadzone/archive.zip",
+            "--config",
+            str(tmp_path / "rclone.conf"),
+            "--build-started-at",
+            "2026-07-17T16:00:00Z",
+            "--stage-started-at",
+            "2026-07-17T16:05:00Z",
+            "--stage-key",
+            "uploading",
+            "--completed-stages",
+            "6",
+            "--total-stages",
+            "8",
+        ]
+    )
+
+    assert exit_code == 1
+    assert calls
+    assert all(call["stage_key"] != "preparing_upload" for call in calls)
+    assert calls[-1]["stage_key"] == "uploading"
+    assert calls[-1]["stage_state"] == "failed"
+    assert calls[-1]["completed_stages"] == 6

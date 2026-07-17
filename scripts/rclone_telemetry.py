@@ -128,19 +128,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     artifact_size = Path(args.source).stat().st_size
-    _send_update(
-        request_id=args.request_id,
-        stage_key="preparing_upload",
-        stage_state="in_progress",
-        completed_stages=args.completed_stages,
-        total_stages=args.total_stages,
-        message="Preparing the Google Drive upload.",
-        processed_bytes=0,
-        total_bytes=artifact_size,
-        artifact_size=artifact_size,
-        build_started_at=args.build_started_at,
-        stage_started_at=datetime.now(timezone.utc).isoformat(),
-    )
 
     command = [
         "rclone",
