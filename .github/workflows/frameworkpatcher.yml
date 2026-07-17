@@ -116,6 +116,12 @@ jobs:
               "miui_services_url": os.environ.get("MIUI_SERVICES_URL", "").strip(),
               "miui_framework_url": os.environ.get("MIUI_FRAMEWORK_URL", "").strip(),
           }
+          telegram_files = {
+              "framework_url": os.environ.get("FRAMEWORK_TELEGRAM_FILE_ID", "").strip(),
+              "services_url": os.environ.get("SERVICES_TELEGRAM_FILE_ID", "").strip(),
+              "miui_services_url": os.environ.get("MIUI_SERVICES_TELEGRAM_FILE_ID", "").strip(),
+              "miui_framework_url": os.environ.get("MIUI_FRAMEWORK_TELEGRAM_FILE_ID", "").strip(),
+          }
           allowed_features = {
               "disable_signature_verification",
               "cn_notification_fix",
@@ -164,22 +170,27 @@ jobs:
           ):
               raise SystemExit("Selected feature is unavailable on this Android version")
 
-          present = {name for name, value in urls.items() if value}
+          for name in urls:
+              if urls[name] and telegram_files[name]:
+                  raise SystemExit(f"{name} was provided more than once")
+          present = {name for name in urls if urls[name] or telegram_files[name]}
           if not present:
               raise SystemExit("At least one framework JAR is required")
           for name, value in urls.items():
-              if not value:
-                  continue
-              parsed = urlsplit(value)
-              host = (parsed.hostname or "").lower().rstrip(".")
-              if (
-                  parsed.scheme != "https"
-                  or host not in allowed_hosts
-                  or parsed.username
-                  or parsed.password
-                  or any(ord(char) < 32 or ord(char) == 127 for char in value)
-              ):
-                  raise SystemExit(f"Untrusted URL for {name}")
+              if value:
+                  parsed = urlsplit(value)
+                  host = (parsed.hostname or "").lower().rstrip(".")
+                  if (
+                      parsed.scheme != "https"
+                      or host not in allowed_hosts
+                      or parsed.username
+                      or parsed.password
+                      or any(ord(char) < 32 or ord(char) == 127 for char in value)
+                  ):
+                      raise SystemExit(f"Untrusted URL for {name}")
+              file_id = telegram_files[name]
+              if file_id and not re.fullmatch(r"[A-Za-z0-9_-]{10,256}", file_id):
+                  raise SystemExit(f"Invalid private Telegram file reference for {name}")
 
           selected = set(features)
           for feature in selected:
@@ -199,6 +210,7 @@ jobs:
               "device_name": device,
               "features": features,
               "urls": urls,
+              "telegram_files": telegram_files,
               "active_inputs": active_inputs,
           }
           with open("build-config.json", "w", encoding="utf-8") as handle:
