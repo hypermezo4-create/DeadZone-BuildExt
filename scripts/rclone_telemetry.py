@@ -208,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
     if return_code == 0:
         _send_update(
             request_id=args.request_id,
-            stage_key="finalizing",
+            stage_key=args.stage_key,
             stage_state="success",
             completed_stages=args.completed_stages,
             total_stages=args.total_stages,
@@ -219,12 +219,12 @@ def main(argv: list[str] | None = None) -> int:
             eta_seconds=0,
             artifact_size=artifact_size,
             build_started_at=args.build_started_at,
-            stage_started_at=datetime.now(timezone.utc).isoformat(),
+            stage_started_at=args.stage_started_at,
         )
     else:
         _send_update(
             request_id=args.request_id,
-            stage_key="finalizing",
+            stage_key=args.stage_key,
             stage_state="failed",
             completed_stages=args.completed_stages,
             total_stages=args.total_stages,
@@ -235,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
             eta_seconds=last_stats["eta_seconds"],
             artifact_size=artifact_size,
             build_started_at=args.build_started_at,
-            stage_started_at=datetime.now(timezone.utc).isoformat(),
+            stage_started_at=args.stage_started_at,
         )
     return return_code
 
