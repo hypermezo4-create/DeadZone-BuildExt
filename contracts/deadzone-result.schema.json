@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deadzone.local/contracts/deadzone-result.schema.json",
+  "title": "DeadZone build result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_id",
+    "project",
+    "status",
+    "provider",
+    "url",
+    "file_name",
+    "sha256",
+    "size"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "request_id": { "type": "string", "pattern": "^DZ-[A-Z]{2}-[0-9]{8}-[0-9]{4}$" },
+    "project": { "type": "string", "minLength": 1 },
+    "status": { "const": "success" },
+    "provider": { "const": "google_drive" },
+    "url": { "type": "string", "pattern": "^https://(drive|docs)\\.google\\.com/" },
+    "file_name": { "type": "string", "minLength": 1 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "size": { "type": "integer", "minimum": 1 }
+  }
+}
