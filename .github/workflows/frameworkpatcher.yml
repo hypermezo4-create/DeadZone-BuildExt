@@ -236,6 +236,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=preparing" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=0" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key preparing \
@@ -243,13 +247,17 @@ jobs:
             --completed-stages 0 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Preparing the FrameworkPatcher build." || true
 
       - name: Telemetry - loading build engine
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=loading_engine" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=1" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key loading_engine \
@@ -257,7 +265,7 @@ jobs:
             --completed-stages 1 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Loading the build engine." || true
 
       - name: Checkout DeadZone engine
@@ -294,6 +302,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=installing_tools" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=2" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key installing_tools \
@@ -301,7 +313,7 @@ jobs:
             --completed-stages 2 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Installing build tools." || true
 
       - name: Install trusted build dependencies
@@ -414,6 +426,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=building" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=3" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key building \
@@ -421,7 +437,7 @@ jobs:
             --completed-stages 3 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Building the module." || true
 
       - name: Run hardened FrameworkPatcher engine
@@ -485,6 +501,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=packaging" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=4" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key packaging \
@@ -492,7 +512,7 @@ jobs:
             --completed-stages 4 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Packaging the final module." || true
 
       - name: Reject false success and verify module contents
@@ -566,6 +586,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=preparing_upload" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=5" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key preparing_upload \
@@ -573,7 +597,7 @@ jobs:
             --completed-stages 5 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Preparing the Google Drive upload." || true
 
       - name: Upload output to Google Drive
@@ -597,9 +621,9 @@ jobs:
             --destination "$remote_path" \
             --config "$config_path" \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$DZ_STAGE_STARTED_AT" \
             --stage-key uploading \
-            --completed-stages 5 \
+            --completed-stages 6 \
             --total-stages 8
           drive_link="$(rclone link "$remote_path" --config "$config_path")"
           case "$drive_link" in
@@ -613,6 +637,24 @@ jobs:
             echo "ARTIFACT_SHA256=$SHA256"
             echo "ARTIFACT_SIZE=$SIZE"
           } >> "$GITHUB_ENV"
+
+      - name: Telemetry - finalizing start
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=finalizing" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=7" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key finalizing \
+            --stage-state in_progress \
+            --completed-stages 7 \
+            --total-stages 8 \
+            --build-started-at "$BUILD_STARTED_AT" \
+            --stage-started-at "$stage_started_at" \
+            --message "Finalizing the FrameworkPatcher result." || true
 
       - name: Create deadzone-result.json
         working-directory: engine
@@ -663,7 +705,7 @@ jobs:
             --completed-stages 8 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$DZ_STAGE_STARTED_AT" \
             --processed-bytes "$ARTIFACT_SIZE" \
             --total-bytes "$ARTIFACT_SIZE" \
             --artifact-size "$ARTIFACT_SIZE" \
@@ -676,12 +718,12 @@ jobs:
           set -euo pipefail
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
+            --stage-key "$DZ_CURRENT_STAGE_KEY" \
             --stage-state failed \
-            --completed-stages 7 \
+            --completed-stages "$DZ_COMPLETED_STAGES" \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$DZ_STAGE_STARTED_AT" \
             --message "The FrameworkPatcher build failed." || true
 
       - name: Telemetry - cancelled
@@ -691,10 +733,10 @@ jobs:
           set -euo pipefail
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
+            --stage-key "$DZ_CURRENT_STAGE_KEY" \
             --stage-state cancelled \
-            --completed-stages 7 \
+            --completed-stages "$DZ_COMPLETED_STAGES" \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$DZ_STAGE_STARTED_AT" \
             --message "The FrameworkPatcher build was cancelled." || true

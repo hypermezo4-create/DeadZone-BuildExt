@@ -72,6 +72,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=preparing" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=0" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key preparing \
@@ -79,7 +83,7 @@ jobs:
             --completed-stages 0 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Preparing the GamingPlus build." || true
 
       - name: Clean unused runner files
@@ -107,6 +111,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=loading_engine" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=1" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key loading_engine \
@@ -114,7 +122,7 @@ jobs:
             --completed-stages 1 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Loading the build engine." || true
 
       - name: Checkout private GamingPlus engine
@@ -145,6 +153,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=installing_tools" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=2" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key installing_tools \
@@ -152,7 +164,7 @@ jobs:
             --completed-stages 2 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Installing build tools." || true
 
       - name: Install build dependencies
@@ -179,6 +191,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=building" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=3" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key building \
@@ -186,7 +202,7 @@ jobs:
             --completed-stages 3 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Building the ROM." || true
 
       - name: Build ROM
@@ -200,6 +216,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=packaging" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=4" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key packaging \
@@ -207,7 +227,7 @@ jobs:
             --completed-stages 4 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Packaging the ROM." || true
 
       - name: Pack ROM
@@ -222,6 +242,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=preparing_upload" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=5" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key preparing_upload \
@@ -229,7 +253,7 @@ jobs:
             --completed-stages 5 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Preparing the upload." || true
 
       - name: Set up Rclone
@@ -243,6 +267,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=uploading" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=6" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key uploading \
@@ -250,7 +278,7 @@ jobs:
             --completed-stages 6 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$stage_started_at" \
             --message "Uploading the package." || true
 
       - name: Upload ROM
@@ -260,6 +288,31 @@ jobs:
           set -euo pipefail
           python3 notify.py upload "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
           sudo -E bash uploadROM.sh 2>&1 | tee -a build_action.log
+
+      - name: Telemetry - finalizing start
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DZ_CURRENT_STAGE_KEY=finalizing" >> "$GITHUB_ENV"
+          echo "DZ_COMPLETED_STAGES=7" >> "$GITHUB_ENV"
+          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
+          python3 ../scripts/send_telemetry.py \
+            --request-id "$REQUEST_ID" \
+            --stage-key finalizing \
+            --stage-state in_progress \
+            --completed-stages 7 \
+            --total-stages 8 \
+            --build-started-at "$BUILD_STARTED_AT" \
+            --stage-started-at "$stage_started_at" \
+            --message "Finalizing the build." || true
+
+      - name: Send success notification
+        if: success()
+        working-directory: toolbuild
+        env:
+          NOTIFY_WORKFLOW_CONCLUSION: success
+        run: python3 notify.py success "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
 
       - name: Telemetry - finalizing
         if: success()
@@ -273,15 +326,8 @@ jobs:
             --completed-stages 8 \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$DZ_STAGE_STARTED_AT" \
             --message "The build completed successfully." || true
-
-      - name: Send success notification
-        if: success()
-        working-directory: toolbuild
-        env:
-          NOTIFY_WORKFLOW_CONCLUSION: success
-        run: python3 notify.py success "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
 
       - name: Send failure notification
         if: failure() && hashFiles('toolbuild/notify.py') != ''
@@ -298,12 +344,12 @@ jobs:
           set -euo pipefail
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
+            --stage-key "$DZ_CURRENT_STAGE_KEY" \
             --stage-state failed \
-            --completed-stages 7 \
+            --completed-stages "$DZ_COMPLETED_STAGES" \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$DZ_STAGE_STARTED_AT" \
             --message "The build failed." || true
 
       - name: Send cancellation notification
@@ -321,10 +367,10 @@ jobs:
           set -euo pipefail
           python3 ../scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
+            --stage-key "$DZ_CURRENT_STAGE_KEY" \
             --stage-state cancelled \
-            --completed-stages 7 \
+            --completed-stages "$DZ_COMPLETED_STAGES" \
             --total-stages 8 \
             --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --stage-started-at "$DZ_STAGE_STARTED_AT" \
             --message "The build was cancelled." || true
