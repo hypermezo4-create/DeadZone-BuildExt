@@ -87,7 +87,6 @@ jobs:
       SERVICES_TELEGRAM_FILE_ID: ${{ inputs.services_telegram_file_id }}
       MIUI_SERVICES_TELEGRAM_FILE_ID: ${{ inputs.miui_services_telegram_file_id }}
       MIUI_FRAMEWORK_TELEGRAM_FILE_ID: ${{ inputs.miui_framework_telegram_file_id }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       FEATURES: ${{ inputs.features }}
       DEVICE_NAME: ${{ inputs.device_name }}
       BUILDER_NAME: ${{ inputs.builder_name }}
@@ -257,6 +256,8 @@ jobs:
 
       - name: Download and validate active JAR inputs
         working-directory: engine
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
