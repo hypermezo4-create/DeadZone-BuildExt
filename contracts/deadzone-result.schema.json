@@ -13,7 +13,9 @@
     "url",
     "file_name",
     "sha256",
-    "size"
+    "size",
+    "os",
+    "codename"
   ],
   "properties": {
     "schema_version": { "const": "1.0" },
