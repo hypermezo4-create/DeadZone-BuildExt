@@ -62,6 +62,14 @@ jobs:
             echo "- builder_name: ${BUILDER_NAME:-manual}"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Keep launcher helpers independent of any stale self-hosted runner workspace.
+      - name: Checkout DeadZone-BuildExt launcher
+        uses: actions/checkout@v4
+        with:
+          path: .
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Initialize telemetry clock
         shell: bash
         run: |
@@ -76,7 +84,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=preparing" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=0" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key preparing \
             --stage-state in_progress \
@@ -115,7 +123,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=loading_engine" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=1" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key loading_engine \
             --stage-state in_progress \
@@ -157,7 +165,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=installing_tools" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=2" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key installing_tools \
             --stage-state in_progress \
@@ -195,7 +203,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=building" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=3" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key building \
             --stage-state in_progress \
@@ -220,7 +228,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=packaging" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=4" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key packaging \
             --stage-state in_progress \
@@ -246,7 +254,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=preparing_upload" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=5" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key preparing_upload \
             --stage-state in_progress \
@@ -271,7 +279,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=uploading" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=6" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key uploading \
             --stage-state in_progress \
@@ -297,7 +305,7 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=finalizing" >> "$GITHUB_ENV"
           echo "DZ_COMPLETED_STAGES=7" >> "$GITHUB_ENV"
           echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key finalizing \
             --stage-state in_progress \
@@ -319,7 +327,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key finalizing \
             --stage-state success \
@@ -342,7 +350,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key "$DZ_CURRENT_STAGE_KEY" \
             --stage-state failed \
@@ -365,7 +373,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
+          python3 scripts/send_telemetry.py \
             --request-id "$REQUEST_ID" \
             --stage-key "$DZ_CURRENT_STAGE_KEY" \
             --stage-state cancelled \

@@ -18,12 +18,14 @@
   "properties": {
     "schema_version": { "const": "1.0" },
     "request_id": { "type": "string", "pattern": "^DZ-[A-Z]{2}-[0-9]{8}-[0-9]{4}$" },
-    "project": { "type": "string", "minLength": 1 },
+    "project": { "enum": ["frameworkpatcher", "lite"] },
     "status": { "const": "success" },
-    "provider": { "const": "google_drive" },
-    "url": { "type": "string", "pattern": "^https://(drive|docs)\\.google\\.com/" },
-    "file_name": { "type": "string", "minLength": 1 },
+    "provider": { "enum": ["google_drive", "pixeldrain"] },
+    "url": { "type": "string", "pattern": "^https://((drive|docs)\\.google\\.com|pixeldrain\\.com)/" },
+    "file_name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.zip$" },
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "size": { "type": "integer", "minimum": 1 }
+    "size": { "type": "integer", "minimum": 1 },
+    "os": { "enum": ["MIUI14", "OS1", "OS2", "OS3"] },
+    "codename": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
   }
 }

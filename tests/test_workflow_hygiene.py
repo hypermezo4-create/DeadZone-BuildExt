@@ -28,7 +28,21 @@ def test_workflows_parse_and_keep_signed_telemetry() -> None:
     for text in (gamingplus, frameworkpatcher):
         assert "BUILD_PROGRESS_SECRET" in text
         assert "CONTROL_BOT_TELEMETRY_URL" in text
-        assert "python3 ../scripts/send_telemetry.py" in text
+        assert "Checkout DeadZone-BuildExt launcher" in text
+        assert "python3 scripts/send_telemetry.py" in text
+
+
+def test_lite_workflow_uses_an_isolated_engine_and_verified_contract() -> None:
+    text = (WORKFLOW_DIR / "lite.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load(text)
+    assert workflow["name"] == "DeadZone Lite Xiaomi Build"
+    assert workflow["run-name"] == "DeadZone Lite  ${{ inputs.request_id }}"
+    assert "^DZ-LT-[0-9]{8}-[0-9]{4}$" in text
+    assert "path: toolbuild" in text
+    assert "LITE_RCLONE_UPLOAD_DIR" in text
+    assert "deadzone-result-${{ inputs.request_id }}" in text
+    for stage in ("preparing", "loading_engine", "installing_tools", "building", "packaging", "preparing_upload", "uploading", "finalizing"):
+        assert f"stage-key {stage}" in text
 
 
 def test_frameworkpatcher_workflow_keeps_rom_version_and_rclone_telemetry() -> None:
