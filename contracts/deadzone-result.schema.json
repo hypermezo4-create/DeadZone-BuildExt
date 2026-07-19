@@ -14,20 +14,34 @@
     "file_name",
     "sha256",
     "size",
-    "os",
-    "codename"
+    "completed_at"
   ],
   "properties": {
     "schema_version": { "const": "1.0" },
     "request_id": { "type": "string", "pattern": "^DZ-[A-Z]{2}-[0-9]{8}-[0-9]{4}$" },
-    "project": { "enum": ["frameworkpatcher", "lite"] },
+    "project": { "enum": ["frameworkpatcher", "gamingplus", "lite"] },
     "status": { "const": "success" },
-    "provider": { "enum": ["google_drive", "pixeldrain"] },
-    "url": { "type": "string", "pattern": "^https://((drive|docs)\\.google\\.com|pixeldrain\\.com)/" },
+    "provider": { "const": "google_drive" },
+    "url": { "type": "string", "pattern": "^https://(drive|docs)\\.google\\.com/" },
     "file_name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.zip$" },
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "size": { "type": "integer", "minimum": 1 },
-    "os": { "enum": ["MIUI14", "OS1", "OS2", "OS3"] },
-    "codename": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
-  }
+    "os": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._ -]*$" },
+    "codename": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "android_version": { "type": "string" },
+    "device_name": { "type": "string" },
+    "rom_version": { "type": "string" },
+    "features": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+  },
+  "oneOf": [
+    {
+      "properties": { "project": { "enum": ["gamingplus", "lite"] } },
+      "required": ["os", "codename"]
+    },
+    {
+      "properties": { "project": { "const": "frameworkpatcher" } },
+      "required": ["android_version", "device_name", "rom_version", "features"]
+    }
+  ]
 }
