@@ -100,7 +100,7 @@ jobs:
         with:
           repository: ${{ secrets.GAMINGPLUS_ENGINE_REPOSITORY }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: 5b34e25316da9723f36488255a1dcf0ee6f03bf0
+          ref: 8f2ca0bf55202f13a8a455e4ec8574806099f38a
           path: toolbuild
           fetch-depth: 1
           lfs: true
