@@ -48,7 +48,7 @@ The control bot dispatches:
 
 GamingPlus, Lite, and FrameworkPatcher deliver final archives only through Google Drive. Each workflow verifies the remote object count, exact size, checksum, and approved Drive link before exposing the single short-lived artifact `deadzone-result-<request_id>` to the control bot. A successful workflow without a matching verified contract is not a successful DeadZone delivery.
 
-The ROM workflows validate public HTTPS input before private engine checkout. GamingPlus is pinned to `5b34e25316da9723f36488255a1dcf0ee6f03bf0`, Lite to `4b61c1103f79df3cf59ad13ec9bfc8b6d6cc5931`, the FrameworkPatcher engine to `71ffca6fd8cafea71e19d3181c2da3e8f44c35fb`, and its module template to `64cf3b19eeeba6685185bf11260b2728ad26f9e3`.
+The ROM workflows validate public HTTPS input before private engine checkout. GamingPlus is pinned to `8f2ca0bf55202f13a8a455e4ec8574806099f38a`, Lite to `b0d02fb3a69e52d330f6ec525b786097d4342c1f`, the FrameworkPatcher engine to `71ffca6fd8cafea71e19d3181c2da3e8f44c35fb`, and its module template to `64cf3b19eeeba6685185bf11260b2728ad26f9e3`.
 
 Required secret concepts remain backward compatible:
 
