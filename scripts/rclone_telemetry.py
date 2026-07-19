@@ -140,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         "4",
         "--transfers",
         "1",
+        "--immutable",
         "--stats",
         "10s",
         "--stats-one-line",
