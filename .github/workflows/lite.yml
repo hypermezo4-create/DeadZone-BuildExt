@@ -100,7 +100,7 @@ jobs:
         with:
           repository: ${{ secrets.LITE_ENGINE_REPOSITORY }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: 4b61c1103f79df3cf59ad13ec9bfc8b6d6cc5931
+          ref: b0d02fb3a69e52d330f6ec525b786097d4342c1f
           path: toolbuild
           fetch-depth: 1
           lfs: true
