@@ -94,15 +94,11 @@ jobs:
       DEVICE_NAME: ${{ inputs.device_name }}
       ROM_VERSION: ${{ inputs.rom_version }}
       BUILDER_NAME: ${{ inputs.builder_name }}
-      RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
-      RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
-      RCLONE_UPLOAD_DIR: module
-      BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
       CONTROL_BOT_TELEMETRY_URL: https://deadzonebot.fly.dev/telemetry
 
     steps:
       - name: Checkout DeadZone-BuildExt launcher
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           path: .
           fetch-depth: 1
@@ -110,8 +106,16 @@ jobs:
 
       - name: Validate private request contract
         shell: bash
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          for key in PRIVATE_REPO_TOKEN RCLONE_CONFIG_BASE64 RCLONE_REMOTE_NAME BUILD_PROGRESS_SECRET; do
+            [[ -n "${!key:-}" ]] || { echo "Missing required configuration: $key" >&2; exit 1; }
+          done
           python3 - <<'PY'
           import json
           import os
@@ -241,6 +245,8 @@ jobs:
 
       - name: Telemetry - preparing
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -259,6 +265,8 @@ jobs:
 
       - name: Telemetry - loading build engine
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -276,11 +284,11 @@ jobs:
             --message "Loading the build engine." || true
 
       - name: Checkout DeadZone engine
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: hypermezo4-create/FrameworkPatcher-DeadZone
           token: ${{ secrets.PRIVATE_REPO_TOKEN || github.token }}
-          ref: main
+          ref: 71ffca6fd8cafea71e19d3181c2da3e8f44c35fb
           path: engine
           fetch-depth: 1
           persist-credentials: false
@@ -290,23 +298,25 @@ jobs:
         run: rm -rf engine/templates/framework-patcher-module
 
       - name: Checkout MEZO module template
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: hypermezo4-create/FrameworkPatcherModule
           token: ${{ secrets.PRIVATE_REPO_TOKEN || github.token }}
-          ref: main
+          ref: 64cf3b19eeeba6685185bf11260b2728ad26f9e3
           path: engine/templates/framework-patcher-module
           fetch-depth: 1
           persist-credentials: false
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Telemetry - installing tools
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -329,8 +339,7 @@ jobs:
           set -euo pipefail
           python3 -m venv .venv
           . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install gdown
+          python -m pip install gdown==5.2.0
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           sudo apt-get update -qq
           sudo apt-get install -y -qq p7zip-full rclone
@@ -431,6 +440,8 @@ jobs:
 
       - name: Telemetry - building
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -506,6 +517,8 @@ jobs:
 
       - name: Telemetry - packaging
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -556,6 +569,10 @@ jobs:
           if len(outputs) != 1:
               raise SystemExit("Expected exactly one output module")
           archive = pathlib.Path(outputs[0])
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.zip", archive.name):
+              raise SystemExit("FrameworkPatcher produced an unsafe archive name")
+          if not archive.is_file() or archive.stat().st_size <= 0:
+              raise SystemExit("FrameworkPatcher archive is missing or empty")
           with zipfile.ZipFile(archive) as module:
               names = set(module.namelist())
               for key in config["active_inputs"]:
@@ -591,6 +608,8 @@ jobs:
 
       - name: Telemetry - preparing upload
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -610,6 +629,8 @@ jobs:
       - name: Telemetry - uploading
         working-directory: engine
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -633,18 +654,28 @@ jobs:
       - name: Upload output to Google Drive
         working-directory: engine
         shell: bash
+        env:
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
+          RCLONE_UPLOAD_DIR: ${{ secrets.RCLONE_UPLOAD_DIR }}
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
           [ -n "$RCLONE_CONFIG_BASE64" ] || { echo "Drive configuration is missing" >&2; exit 1; }
           [[ "$RCLONE_REMOTE_NAME" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "Invalid Drive remote name" >&2; exit 1; }
           source artifact.env
-          config_path="$RUNNER_TEMP/rclone.conf"
-          printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config_path"
+          config_path="$RUNNER_TEMP/deadzone-rclone-$REQUEST_ID.conf"
+          umask 077
+          printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config_path" 2>/dev/null || { echo "Invalid Drive configuration" >&2; exit 1; }
+          [[ -s "$config_path" ]] || { echo "Decoded Drive configuration is empty" >&2; exit 1; }
           chmod 600 "$config_path"
-          upload_root="${RCLONE_UPLOAD_DIR:-DeadZoneBuilds}"
+          rclone --config "$config_path" listremotes | grep -Fxq "$RCLONE_REMOTE_NAME:" || { echo "Requested Drive remote is not configured" >&2; exit 1; }
+          rclone --config "$config_path" lsd "$RCLONE_REMOTE_NAME:" >/dev/null || { echo "Drive remote is unavailable" >&2; exit 1; }
+          upload_root="${RCLONE_UPLOAD_DIR:-module}"
           upload_root="${upload_root#/}"
           upload_root="${upload_root%/}"
-          remote_path="${RCLONE_REMOTE_NAME}:${upload_root}/FrameworkPatcher-DeadZone/${REQUEST_ID}/${ARTIFACT}"
+          [[ -n "$upload_root" && "$upload_root" != *".."* ]] || { echo "Invalid Drive upload root" >&2; exit 1; }
+          remote_path="${RCLONE_REMOTE_NAME}:${upload_root}/frameworkpatcher/${REQUEST_ID}/Android${ANDROID_VERSION}/${DEVICE_NAME}/${ARTIFACT}"
           python3 ../scripts/rclone_telemetry.py \
             --request-id "$REQUEST_ID" \
             --source "$ARTIFACT" \
@@ -655,6 +686,17 @@ jobs:
             --stage-key uploading \
             --completed-stages 6 \
             --total-stages 8
+          size_json="$(rclone --config "$config_path" size "$remote_path" --json)"
+          SIZE_JSON="$size_json" EXPECTED_SIZE="$SIZE" python3 - <<'PY'
+          import json
+          import os
+          data = json.loads(os.environ["SIZE_JSON"])
+          if data.get("count") != 1 or data.get("bytes") != int(os.environ["EXPECTED_SIZE"]):
+              raise SystemExit("Remote object count or size verification failed")
+          PY
+          local_md5="$(md5sum "$ARTIFACT" | awk '{print $1}')"
+          remote_md5="$(rclone --config "$config_path" md5sum "$remote_path" | awk 'NF {print tolower($1); exit}')"
+          [[ "$remote_md5" =~ ^[a-f0-9]{32}$ && "$remote_md5" == "$local_md5" ]] || { echo "Remote checksum verification failed" >&2; exit 1; }
           drive_link="$(rclone link "$remote_path" --config "$config_path")"
           case "$drive_link" in
             https://drive.google.com/*|https://docs.google.com/*) ;;
@@ -670,6 +712,8 @@ jobs:
 
       - name: Telemetry - finalizing start
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -686,7 +730,7 @@ jobs:
             --stage-started-at "$stage_started_at" \
             --message "Finalizing the FrameworkPatcher result." || true
 
-      - name: Create deadzone-result.json
+      - name: Create and verify deadzone-result.json
         working-directory: engine
         shell: bash
         run: |
@@ -708,15 +752,20 @@ jobs:
               "android_version": os.environ["ANDROID_VERSION"],
               "device_name": os.environ["DEVICE_NAME"],
               "rom_version": os.environ["ROM_VERSION"],
-              "features": [item for item in os.environ["FEATURES"].split(",") if item],
+              "features": [item.strip() for item in os.environ["FEATURES"].split(",") if item.strip()],
               "completed_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
           }
-          with open("deadzone-result.json", "w", encoding="utf-8") as handle:
+          with open("deadzone-upload.json", "w", encoding="utf-8") as handle:
               json.dump(result, handle, indent=2)
           PY
+          python3 ../scripts/validate_result_contract.py \
+            --input deadzone-upload.json \
+            --output deadzone-result.json \
+            --request-id "$REQUEST_ID" \
+            --project frameworkpatcher
 
       - name: Expose only the result contract to the control bot
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: deadzone-result-${{ inputs.request_id }}
           path: engine/deadzone-result.json
@@ -726,6 +775,8 @@ jobs:
       - name: Telemetry - finalizing
         if: success()
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
           set -euo pipefail
           python3 scripts/send_telemetry.py \
@@ -744,29 +795,22 @@ jobs:
       - name: Telemetry - failure
         if: failure()
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key "$DZ_CURRENT_STAGE_KEY" \
-            --stage-state failed \
-            --completed-stages "$DZ_COMPLETED_STAGES" \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$DZ_STAGE_STARTED_AT" \
-            --message "The FrameworkPatcher build failed." || true
+          set -Eeuo pipefail
+          bash scripts/emit_stage.sh "${DZ_CURRENT_STAGE_KEY:-preparing}" failed "${DZ_COMPLETED_STAGES:-0}" "The FrameworkPatcher build failed."
 
       - name: Telemetry - cancelled
         if: cancelled()
         shell: bash
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
-          set -euo pipefail
-          python3 ../scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key "$DZ_CURRENT_STAGE_KEY" \
-            --stage-state cancelled \
-            --completed-stages "$DZ_COMPLETED_STAGES" \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$DZ_STAGE_STARTED_AT" \
-            --message "The FrameworkPatcher build was cancelled." || true
+          set -Eeuo pipefail
+          bash scripts/emit_stage.sh "${DZ_CURRENT_STAGE_KEY:-preparing}" cancelled "${DZ_COMPLETED_STAGES:-0}" "The FrameworkPatcher build was cancelled."
+
+      - name: Remove temporary secrets
+        if: always()
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/deadzone-rclone-$REQUEST_ID.conf"
