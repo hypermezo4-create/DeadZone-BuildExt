@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
       REQUEST_ID: ${{ inputs.request_id }}
@@ -84,6 +84,16 @@ jobs:
           echo "DZ_CURRENT_STAGE_KEY=loading_engine" >> "$GITHUB_ENV"; echo "DZ_COMPLETED_STAGES=1" >> "$GITHUB_ENV"; echo "DZ_STAGE_STARTED_AT=$now" >> "$GITHUB_ENV"
           python3 scripts/send_telemetry.py --request-id "$REQUEST_ID" --stage-key loading_engine --stage-state in_progress --completed-stages 1 --total-stages 8 --build-started-at "$BUILD_STARTED_AT" --stage-started-at "$now" --message "Loading the Lite engine." || echo "Telemetry delivery failed; build continues."
 
+      - name: Prepare hosted runner disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /; df -i /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          docker system prune --all --force || true
+          sudo apt-get clean
+          df -h /; df -i /
+
       - name: Checkout private Lite engine
         uses: actions/checkout@v4
         with:
@@ -115,6 +125,7 @@ jobs:
           python3 -m venv .venv
           . .venv/bin/activate
           python -m pip install --upgrade pip requests
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           sudo -E bash setup.sh 2>&1 | tee -a build_action.log
 
       - name: Telemetry - building
