@@ -50,8 +50,8 @@ def test_job_environment_contains_no_github_secrets() -> None:
 
 def test_gamingplus_and_lite_use_pinned_engines_and_secure_contract() -> None:
     expected = {
-        "gamingplus.yml": ("5b34e25316da9723f36488255a1dcf0ee6f03bf0", "gamingplus", "DZ-GP"),
-        "lite.yml": ("4b61c1103f79df3cf59ad13ec9bfc8b6d6cc5931", "lite", "DZ-LT"),
+        "gamingplus.yml": ("8f2ca0bf55202f13a8a455e4ec8574806099f38a", "gamingplus", "DZ-GP"),
+        "lite.yml": ("b0d02fb3a69e52d330f6ec525b786097d4342c1f", "lite", "DZ-LT"),
     }
     for name, (sha, project, prefix) in expected.items():
         text = _text(name)
