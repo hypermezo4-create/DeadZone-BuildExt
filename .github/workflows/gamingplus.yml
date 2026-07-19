@@ -6,19 +6,19 @@ on:
   workflow_dispatch:
     inputs:
       request_id:
-        description: 'DeadZone control request ID'
+        description: DeadZone control request ID
         required: true
         type: string
       input_url:
-        description: 'URL of the ROM to build'
+        description: HTTPS URL of the source ROM
         required: true
         type: string
       builder_name:
-        description: 'Builder name'
+        description: Builder name
         required: false
         type: string
       builder_id:
-        description: 'Builder ID'
+        description: Builder ID
         required: false
         type: string
 
@@ -33,344 +33,247 @@ jobs:
   build:
     name: Build ROM
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
     env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-      RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
-      RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
-      RCLONE_UPLOAD_DIR: ${{ secrets.RCLONE_UPLOAD_DIR }}
-      BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
-      CONTROL_BOT_TELEMETRY_URL: https://deadzonebot.fly.dev/telemetry
       REQUEST_ID: ${{ inputs.request_id }}
       INPUT_URL: ${{ inputs.input_url }}
       BUILDER_NAME: ${{ inputs.builder_name }}
       BUILDER_ID: ${{ inputs.builder_id }}
+      CONTROL_BOT_TELEMETRY_URL: https://deadzonebot.fly.dev/telemetry
 
     steps:
-      - name: Validate request ID
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! "$REQUEST_ID" =~ ^DZ-GP-[0-9]{8}-[0-9]{4}$ ]]; then
-            echo "Invalid request_id format: expected DZ-GP-YYYYMMDD-NNNN" >&2
-            exit 1
-          fi
-          {
-            echo "### DeadZone Control Contract"
-            echo "- request_id: $REQUEST_ID"
-            echo "- builder_name: ${BUILDER_NAME:-manual}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Keep launcher helpers independent of any stale self-hosted runner workspace.
       - name: Checkout DeadZone-BuildExt launcher
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          path: .
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Initialize telemetry clock
+      - name: Validate request before private checkout
         shell: bash
+        env:
+          ENGINE_REPOSITORY: ${{ secrets.GAMINGPLUS_ENGINE_REPOSITORY }}
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
+          RCLONE_UPLOAD_DIR: ${{ secrets.RCLONE_UPLOAD_DIR }}
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          [[ "$REQUEST_ID" =~ ^DZ-GP-[0-9]{8}-[0-9]{4}$ ]] || { echo "Invalid GamingPlus request ID." >&2; exit 1; }
+          python3 scripts/validate_rom_url.py "$INPUT_URL"
+          for key in ENGINE_REPOSITORY PRIVATE_REPO_TOKEN RCLONE_CONFIG_BASE64 RCLONE_REMOTE_NAME RCLONE_UPLOAD_DIR BUILD_PROGRESS_SECRET; do
+            [[ -n "${!key:-}" ]] || { echo "Missing required configuration: $key" >&2; exit 1; }
+          done
           echo "BUILD_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Telemetry - preparing
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=preparing" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=0" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key preparing \
-            --stage-state in_progress \
-            --completed-stages 0 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Preparing the GamingPlus build." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh preparing in_progress 0 "Preparing the GamingPlus build."
 
-      - name: Clean unused runner files
-        if: runner.environment == 'github-hosted'
+      - name: Prepare hosted runner disk
+        uses: easimon/maximize-build-space@c28619d8999a147d5e09c1199f84ff6af6ad5794
+        with:
+          swap-size-mb: 1024
+          root-reserve-mb: 768
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+
+      - name: Gate available disk before engine checkout
         shell: bash
         run: |
-          docker system prune --all --force || true
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
-          sudo apt-get clean || true
-
-      - name: Check available disk space
-        run: |
-          df -h /
-          df -i /
+          set -Eeuo pipefail
+          df -h /; df -i /
+          available="$(df -Pk / | awk 'NR == 2 {print $4 * 1024}')"
+          (( available >= 25 * 1024 * 1024 * 1024 )) || { echo "At least 25 GiB free is required before engine checkout." >&2; exit 1; }
 
       - name: Telemetry - loading build engine
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=loading_engine" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=1" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key loading_engine \
-            --stage-state in_progress \
-            --completed-stages 1 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Loading the build engine." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh loading_engine in_progress 1 "Loading the pinned GamingPlus engine."
 
       - name: Checkout private GamingPlus engine
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: ${{ secrets.GAMINGPLUS_ENGINE_REPOSITORY }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: main
+          ref: 5b34e25316da9723f36488255a1dcf0ee6f03bf0
           path: toolbuild
           fetch-depth: 1
           lfs: true
           persist-credentials: false
 
-      - name: Set timezone
+      - name: Report disk after engine checkout
         shell: bash
-        run: |
-          sudo ln -snf /usr/share/zoneinfo/Asia/Ho_Chi_Minh /etc/localtime
-          echo Asia/Ho_Chi_Minh | sudo tee /etc/timezone >/dev/null
+        run: df -h / && df -i /
 
       - name: Set up OpenJDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Telemetry - installing tools
-        if: success()
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=installing_tools" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=2" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key installing_tools \
-            --stage-state in_progress \
-            --completed-stages 2 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Installing build tools." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh installing_tools in_progress 2 "Installing pinned GamingPlus build tools."
 
-      - name: Install build dependencies
+      - name: Install pinned build dependencies
         working-directory: toolbuild
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
           python3 -m venv .venv
           . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install requests
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-          sudo bash setup.sh 2>&1 | tee -a build_action.log
+          bash setup.sh 2>&1 | tee -a build_action.log
 
-      - name: Send start notification
+      - name: Notify build start
         working-directory: toolbuild
-        run: python3 notify.py start "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
-
-      - name: Grant tool permissions
-        working-directory: toolbuild
-        run: sudo chmod -R u+rwX,go+rX .
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: python notify.py start "${{ github.repository }}" verified-rom-input xst "$BUILDER_NAME" "$BUILDER_ID"
 
       - name: Telemetry - building
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=building" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=3" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key building \
-            --stage-state in_progress \
-            --completed-stages 3 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Building the ROM." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh building in_progress 3 "Building the GamingPlus ROM."
 
       - name: Build ROM
         working-directory: toolbuild
         shell: bash
         run: |
-          set -euo pipefail
-          sudo -E bash build.sh "$INPUT_URL" "${{ github.repository }}" "xst" "$BUILDER_NAME" "$BUILDER_ID" 2>&1 | tee -a build_action.log
+          set -Eeuo pipefail
+          bash build.sh "$INPUT_URL" "${{ github.repository }}" xst "$BUILDER_NAME" "$BUILDER_ID" 2>&1 | tee -a build_action.log
+          df -h /; df -i /
 
       - name: Telemetry - packaging
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=packaging" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=4" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key packaging \
-            --stage-state in_progress \
-            --completed-stages 4 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Packaging the ROM." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh packaging in_progress 4 "Packaging the GamingPlus ROM."
 
       - name: Pack ROM
         working-directory: toolbuild
         shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: |
-          set -euo pipefail
-          python3 notify.py pack "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
-          sudo bash packROM.sh 2>&1 | tee -a build_action.log
+          set -Eeuo pipefail
+          python notify.py pack "${{ github.repository }}" verified-rom-input xst "$BUILDER_NAME" "$BUILDER_ID"
+          bash packROM.sh 2>&1 | tee -a build_action.log
+          [[ -s build/baserom/images/super.img ]] || { echo "super.img is missing after packaging." >&2; exit 1; }
+          df -h /; df -i /
 
       - name: Telemetry - preparing upload
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=preparing_upload" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=5" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key preparing_upload \
-            --stage-state in_progress \
-            --completed-stages 5 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Preparing the upload." || true
-
-      - name: Set up Rclone
-        working-directory: toolbuild
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo -E bash uploadROM.sh setup 2>&1 | tee -a build_action.log
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh preparing_upload in_progress 5 "Preparing verified Google Drive delivery."
 
       - name: Telemetry - uploading
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=uploading" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=6" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key uploading \
-            --stage-state in_progress \
-            --completed-stages 6 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Uploading the package." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh uploading in_progress 6 "Uploading the GamingPlus package to Google Drive."
 
-      - name: Upload ROM
+      - name: Upload and verify Google Drive delivery
         working-directory: toolbuild
         shell: bash
+        env:
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
+          RCLONE_UPLOAD_DIR: ${{ secrets.RCLONE_UPLOAD_DIR }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: |
-          set -euo pipefail
-          python3 notify.py upload "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
-          sudo -E bash uploadROM.sh 2>&1 | tee -a build_action.log
+          set -Eeuo pipefail
+          df -h /; df -i /
+          bash uploadROM.sh setup 2>&1 | tee -a build_action.log
+          python notify.py upload "${{ github.repository }}" verified-rom-input xst "$BUILDER_NAME" "$BUILDER_ID"
+          bash uploadROM.sh 2>&1 | tee -a build_action.log
+          python3 ../scripts/validate_result_contract.py \
+            --input bin/ddevice/deadzone_upload.json \
+            --output ../deadzone-result.json \
+            --request-id "$REQUEST_ID" \
+            --project gamingplus
 
       - name: Telemetry - finalizing start
         shell: bash
-        run: |
-          set -euo pipefail
-          stage_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "DZ_CURRENT_STAGE_KEY=finalizing" >> "$GITHUB_ENV"
-          echo "DZ_COMPLETED_STAGES=7" >> "$GITHUB_ENV"
-          echo "DZ_STAGE_STARTED_AT=$stage_started_at" >> "$GITHUB_ENV"
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
-            --stage-state in_progress \
-            --completed-stages 7 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$stage_started_at" \
-            --message "Finalizing the build." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh finalizing in_progress 7 "Finalizing the verified GamingPlus result."
 
-      - name: Send success notification
+      - name: Expose only the verified result contract
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deadzone-result-${{ inputs.request_id }}
+          path: deadzone-result.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Notify verified success
         if: success()
         working-directory: toolbuild
+        shell: bash
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           NOTIFY_WORKFLOW_CONCLUSION: success
-        run: python3 notify.py success "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
+        run: python notify.py success "${{ github.repository }}" verified-rom-input xst "$BUILDER_NAME" "$BUILDER_ID"
 
       - name: Telemetry - finalizing
         if: success()
         shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key finalizing \
-            --stage-state success \
-            --completed-stages 8 \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$DZ_STAGE_STARTED_AT" \
-            --message "The build completed successfully." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh finalizing success 8 "The GamingPlus result was verified."
 
-      - name: Send failure notification
+      - name: Notify failure
         if: failure() && hashFiles('toolbuild/notify.py') != ''
         working-directory: toolbuild
+        shell: bash
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           NOTIFY_WORKFLOW_CONCLUSION: failure
           NOTIFY_ERROR_LOG: build_action.log
-        run: python3 notify.py fail "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
+        run: python notify.py fail "${{ github.repository }}" verified-rom-input xst "$BUILDER_NAME" "$BUILDER_ID"
 
       - name: Telemetry - failure
         if: failure()
         shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key "$DZ_CURRENT_STAGE_KEY" \
-            --stage-state failed \
-            --completed-stages "$DZ_COMPLETED_STAGES" \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$DZ_STAGE_STARTED_AT" \
-            --message "The build failed." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh "${DZ_CURRENT_STAGE_KEY:-preparing}" failed "${DZ_COMPLETED_STAGES:-0}" "The GamingPlus build failed."
 
-      - name: Send cancellation notification
+      - name: Notify cancellation
         if: cancelled() && hashFiles('toolbuild/notify.py') != ''
         working-directory: toolbuild
+        shell: bash
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           NOTIFY_WORKFLOW_CONCLUSION: cancelled
           NOTIFY_ERROR_LOG: build_action.log
-        run: python3 notify.py cancelled "${{ github.repository }}" "$INPUT_URL" "xst" "$BUILDER_NAME" "$BUILDER_ID"
+        run: python notify.py cancelled "${{ github.repository }}" verified-rom-input xst "$BUILDER_NAME" "$BUILDER_ID"
 
       - name: Telemetry - cancelled
         if: cancelled()
         shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/send_telemetry.py \
-            --request-id "$REQUEST_ID" \
-            --stage-key "$DZ_CURRENT_STAGE_KEY" \
-            --stage-state cancelled \
-            --completed-stages "$DZ_COMPLETED_STAGES" \
-            --total-stages 8 \
-            --build-started-at "$BUILD_STARTED_AT" \
-            --stage-started-at "$DZ_STAGE_STARTED_AT" \
-            --message "The build was cancelled." || true
+        env:
+          BUILD_PROGRESS_SECRET: ${{ secrets.BUILD_PROGRESS_SECRET }}
+        run: bash scripts/emit_stage.sh "${DZ_CURRENT_STAGE_KEY:-preparing}" cancelled "${DZ_COMPLETED_STAGES:-0}" "The GamingPlus build was cancelled."
+
+      - name: Remove temporary secrets
+        if: always()
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/deadzone-rclone-$REQUEST_ID.conf"
