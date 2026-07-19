@@ -1,2 +1,10 @@
 __pycache__/
 *.py[cod]
+.venv/
+build-config.json
+deadzone-result.json
+deadzone-upload.json
+artifact.env
+*.log
+*.zip
+*rclone*.conf
