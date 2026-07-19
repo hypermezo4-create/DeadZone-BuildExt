@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Run checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --requirement requirements-test.txt
+          .venv/bin/python -m pytest -q
+          .venv/bin/python -m compileall -q scripts tests
+          for workflow in .github/workflows/*.yml; do
+            .venv/bin/python -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1], encoding="utf-8"))' "$workflow"
+          done
