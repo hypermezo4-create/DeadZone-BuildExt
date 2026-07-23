@@ -1,7 +1,5 @@
 name: DeadZone Lite Xiaomi Build
 
-run-name: "DeadZone Lite - ${{ inputs.builder_name }}"
-
 on:
   workflow_dispatch:
     inputs:
@@ -10,7 +8,7 @@ on:
         required: true
         type: string
       input_url:
-        description: 'Direct URL of the Xiaomi ROM'
+        description: 'URL of the Xiaomi ROM to build'
         required: true
         type: string
 
@@ -18,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  Initialize:
     name: Build DeadZone Lite
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -39,22 +37,14 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
 
-      - name: Clean unused files
-        shell: bash
+      - name: Clean unused files and applications
         run: |
           docker rmi $(docker images -q) 2>/dev/null || true
-          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php || true
-          sudo apt-get -y purge azure-cli 'ghc*' 'zulu*' 'llvm*' firefox 'google*' 'dotnet*' powershell 'mysql*' 'php*' || true
+          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/sudo/apt/sources.list.d || true
+          sudo apt-get -y purge azure-cli 'ghc*' 'zulu*' 'hhvm*' 'llvm*' firefox 'google*' 'dotnet*' powershell 'mysql*' 'php*' || true
           sudo apt-get -y autoremove --purge || true
+          sudo apt-get -y autoclean || true
           sudo apt-get clean || true
-
-      - name: Validate inputs
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          [[ -n "$BUILDER_NAME" ]] || { echo "Builder name is required." >&2; exit 1; }
-          [[ "$INPUT_URL" =~ ^https?:// ]] || { echo "A direct HTTP or HTTPS ROM URL is required." >&2; exit 1; }
-          [[ -n "$ENGINE_TOKEN" ]] || { echo "PRIVATE_REPO_TOKEN or GH_TOKEN secret is required." >&2; exit 1; }
 
       - name: Clone DeadZone Lite source
         uses: actions/checkout@v4
@@ -67,7 +57,16 @@ jobs:
           lfs: true
           persist-credentials: false
 
-      - name: Set up OpenJDK 17
+      - name: Send start notification
+        working-directory: toolbuild
+        run: |
+          pip install requests
+          python3 notify.py start "${{ github.repository }}" "$INPUT_URL" lite "$BUILDER_NAME" ""
+
+      - name: Set Cairo timezone
+        run: sudo timedatectl set-timezone Africa/Cairo
+
+      - name: Install OpenJDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -75,58 +74,51 @@ jobs:
 
       - name: Install build tools
         working-directory: toolbuild
-        shell: bash
         run: |
-          set -Eeuo pipefail
+          set -e
+          set -o pipefail
           echo "[STEP] Install tools" | tee -a build_action.log
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test 2>&1 | tee -a build_action.log
           sudo apt-get update 2>&1 | tee -a build_action.log
           sudo apt-get install -y aria2 jq rclone sshpass python-is-python3 wget python3 lz4 xz-utils device-tree-compiler zlib1g-dev gcc g++ libc6 libstdc++6 python3-pip dialog libgtk-3-dev aapt busybox zip erofs-utils unzip p7zip-full zipalign zstd bc android-sdk-libsparse-utils xmlstarlet 2>&1 | tee -a build_action.log
-          sudo pip3 install requests ConfigObj telebot setuptools google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client 2>&1 | tee -a build_action.log
+          sudo pip3 install ConfigObj telebot setuptools requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client 2>&1 | tee -a build_action.log
 
       - name: Grant file permissions
         working-directory: toolbuild
-        shell: bash
-        run: sudo chmod -R u+rwX,go+rX .
-
-      - name: Send start notification
-        working-directory: toolbuild
-        shell: bash
-        run: python3 notify.py start "${{ github.repository }}" "$INPUT_URL" lite "$BUILDER_NAME" ""
+        run: sudo chmod 777 -R *
 
       - name: Build ROM
         working-directory: toolbuild
-        shell: bash
         run: |
-          set -Eeuo pipefail
+          set -e
+          set -o pipefail
           echo "[STEP] Build ROM" | tee -a build_action.log
           sudo -E bash build.sh "$INPUT_URL" "${{ github.repository }}" lite "$BUILDER_NAME" "" 2>&1 | tee -a build_action.log
 
       - name: Pack ROM
         working-directory: toolbuild
-        shell: bash
         run: |
-          set -Eeuo pipefail
+          set -e
+          set -o pipefail
           python3 notify.py pack "${{ github.repository }}" "$INPUT_URL" lite "$BUILDER_NAME" ""
           echo "[STEP] Pack ROM" | tee -a build_action.log
-          sudo -E bash packROM.sh 2>&1 | tee -a build_action.log
+          sudo bash packROM.sh 2>&1 | tee -a build_action.log
 
-      - name: Set up cloud upload
+      - name: Set up Rclone
         working-directory: toolbuild
-        shell: bash
         run: |
-          set -Eeuo pipefail
-          [[ -n "${{ secrets.GH_REPO }}" ]] || { echo "GH_REPO secret is required." >&2; exit 1; }
-          [[ -n "${{ secrets.RCLONE_TOKEN_PATH }}" ]] || { echo "RCLONE_TOKEN_PATH secret is required." >&2; exit 1; }
-          echo "[STEP] Set up cloud upload" | tee -a build_action.log
+          set -e
+          set -o pipefail
+          echo "[STEP] Set up Rclone" | tee -a build_action.log
           sudo -E bash uploadROM.sh setup "$ENGINE_TOKEN" "${{ secrets.GH_REPO }}" "${{ secrets.RCLONE_TOKEN_PATH }}" 2>&1 | tee -a build_action.log
 
-      - name: Upload ROM
+      - name: Upload ROM to DeadZone Cloud
         working-directory: toolbuild
-        shell: bash
         run: |
-          set -Eeuo pipefail
+          set -e
+          set -o pipefail
           python3 notify.py upload "${{ github.repository }}" "$INPUT_URL" lite "$BUILDER_NAME" ""
-          echo "[STEP] Upload ROM" | tee -a build_action.log
+          echo "[STEP] Upload ROM to DeadZone Cloud" | tee -a build_action.log
           sudo -E bash uploadROM.sh 2>&1 | tee -a build_action.log
 
       - name: Send success notification
