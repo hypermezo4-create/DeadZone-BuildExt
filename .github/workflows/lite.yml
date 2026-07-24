@@ -1,34 +1,23 @@
 name: "🔥 MEZO_Lite"
 
-run-name: "🔥 MEZO_Lite • ${{ inputs.builder_name || 'MEZO' }}"
-
 on:
   workflow_dispatch:
     inputs:
-      input_url:
-        description: "URL of the Xiaomi ROM to build"
+      rom_link:
+        description: "Direct ROM link for the DeadZone Lite build"
         required: true
-        type: string
-      builder_name:
-        description: "Builder name"
+      request_source:
+        description: "Request source label"
         required: false
-        default: "MEZO"
-        type: string
-      builder_id:
-        description: "Builder Telegram ID"
-        required: false
-        type: string
+        default: "github"
       publish_release:
-        description: "Publish the completed build to the release channel?"
-        required: true
+        description: "Publish release automatically?"
+        required: false
         default: "false"
         type: choice
         options:
           - "false"
           - "true"
-
-permissions:
-  contents: read
 
 concurrency:
   group: mezo-lite-build-queue
@@ -38,13 +27,7 @@ jobs:
   Initialize:
     name: "🔥 Build MEZO Lite"
     runs-on: ubuntu-latest
-    timeout-minutes: 240
     env:
-      INPUT_URL: ${{ inputs.input_url }}
-      BUILDER_NAME: ${{ inputs.builder_name }}
-      BUILDER_ID: ${{ inputs.builder_id }}
-      REQUEST_SOURCE: buildext:${{ inputs.builder_name }}:${{ inputs.builder_id }}
-      PUBLISH_RELEASE: ${{ inputs.publish_release }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       MEZO_PRIVATE_CHAT_ID: ${{ secrets.MEZO_PRIVATE_CHAT_ID }}
       TELEGRAM_RELEASE_GROUP_ID: ${{ secrets.TELEGRAM_RELEASE_GROUP_ID }}
@@ -57,6 +40,8 @@ jobs:
       RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
       RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
       RCLONE_UPLOAD_DIR: ${{ secrets.RCLONE_UPLOAD_DIR }}
+      REQUEST_SOURCE: ${{ inputs.request_source }}
+      PUBLISH_RELEASE: ${{ inputs.publish_release }}
 
     steps:
       - name: Maximize build space
@@ -70,63 +55,70 @@ jobs:
 
       - name: Clean unused files and applications
         run: |
-          docker rmi $(docker images -q) 2>/dev/null || true
-          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/sudo/apt/sources.list.d || true
-          sudo apt-get -y purge azure-cli 'ghc*' 'zulu*' 'hhvm*' 'llvm*' firefox 'google*' 'dotnet*' powershell 'mysql*' 'php*' || true
-          sudo apt-get -y autoremove --purge || true
-          sudo apt-get -y autoclean || true
-          sudo apt-get clean || true
+          docker rmi $(docker images -q) || true
+          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php || true
+          sudo apt -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell mysql* php* || true
+          sudo apt -y autoremove --purge || true
+          sudo apt -y autoclean || true
+          sudo apt clean || true
 
       - name: Clone private MEZO Lite source
         uses: actions/checkout@v4
         with:
           repository: hypermezo4-create/DeadZone_Lite
           token: ${{ secrets.GH_TOKEN }}
-          ref: main
           path: toolbuild
-          fetch-depth: 1
           lfs: true
-          persist-credentials: false
 
-      - name: Set Cairo timezone
+      - name: Notify MEZO about request
+        working-directory: toolbuild
+        run: python3 notify.py private request_received
+
+      - name: Set timezone
         run: sudo timedatectl set-timezone Africa/Cairo
 
-      - name: Install OpenJDK 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: "temurin"
           java-version: "17"
 
-      - name: Install build tools
+      - name: Install dependencies
         working-directory: toolbuild
         run: |
-          set -e
-          set -o pipefail
-          echo "[STEP] Install tools" | tee -a build_action.log
-          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test 2>&1 | tee -a build_action.log
-          sudo apt-get update 2>&1 | tee -a build_action.log
-          sudo apt-get install -y aria2 jq rclone sshpass python-is-python3 wget python3 lz4 xz-utils device-tree-compiler zlib1g-dev gcc g++ libc6 libstdc++6 python3-pip dialog libgtk-3-dev aapt busybox zip erofs-utils unzip p7zip-full zipalign zstd bc android-sdk-libsparse-utils xmlstarlet golang-go 2>&1 | tee -a build_action.log
-          sudo env "GOBIN=/usr/local/bin" go install github.com/ssut/payload-dumper-go/cmd/payload-dumper-go@latest 2>&1 | tee -a build_action.log || true
-          sudo pip3 install ConfigObj requests telebot setuptools google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client 2>&1 | tee -a build_action.log
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends software-properties-common ca-certificates curl gnupg file git
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test || true
+          sudo add-apt-repository -y universe || true
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 jq sshpass python-is-python3 wget python3 python3-pip lz4 xz-utils \
+            device-tree-compiler zlib1g-dev gcc g++ libc6 libstdc++6 dialog libgtk-3-dev \
+            busybox zip unzip p7zip-full zstd bc android-sdk-libsparse-utils golang-go
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends erofs-utils || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xmlstarlet || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zipalign || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aapt || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends rclone || curl -fsSL https://rclone.org/install.sh | sudo bash
+          sudo env "GOBIN=/usr/local/bin" go install github.com/ssut/payload-dumper-go/cmd/payload-dumper-go@latest || true
+          python3 -m pip install --user --upgrade pip
+          python3 -m pip install --user ConfigObj requests telebot setuptools
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Grant file permissions
         working-directory: toolbuild
         run: sudo chmod 777 -R *
 
-      - name: Send request notification
-        working-directory: toolbuild
-        run: |
-          echo "CURRENT_STAGE=request_acknowledged" >> "$GITHUB_ENV"
-          python3 notify.py private request_received
-
       - name: Build ROM
         working-directory: toolbuild
+        env:
+          INPUT_URL: ${{ inputs.rom_link }}
         run: |
           set -e
           set -o pipefail
           echo "CURRENT_STAGE=parse_rom_metadata" >> "$GITHUB_ENV"
-          echo "[STEP] Build ROM" | tee -a build_action.log
-          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash build.sh "$INPUT_URL" 2>&1 | tee -a build_action.log
+          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash build.sh "$INPUT_URL"
 
       - name: Pack ROM
         working-directory: toolbuild
@@ -135,8 +127,7 @@ jobs:
           set -o pipefail
           echo "CURRENT_STAGE=package" >> "$GITHUB_ENV"
           python3 notify.py private packaging_started
-          echo "[STEP] Pack ROM" | tee -a build_action.log
-          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash packROM.sh 2>&1 | tee -a build_action.log
+          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash packROM.sh
 
       - name: Set up Rclone
         working-directory: toolbuild
@@ -144,8 +135,7 @@ jobs:
           set -e
           set -o pipefail
           echo "CURRENT_STAGE=setup_rclone" >> "$GITHUB_ENV"
-          echo "[STEP] Set up Rclone" | tee -a build_action.log
-          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash uploadROM.sh setup 2>&1 | tee -a build_action.log
+          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash uploadROM.sh setup
 
       - name: Upload ROM to Google Drive
         working-directory: toolbuild
@@ -154,8 +144,7 @@ jobs:
           set -o pipefail
           echo "CURRENT_STAGE=upload_drive" >> "$GITHUB_ENV"
           python3 notify.py private upload_started
-          echo "[STEP] Upload ROM to Google Drive" | tee -a build_action.log
-          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash uploadROM.sh 2>&1 | tee -a build_action.log
+          sudo -E env "PATH=$PATH" "HOME=$HOME" "GITHUB_ENV=$GITHUB_ENV" "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" bash uploadROM.sh
 
       - name: Send success notification
         if: success()
@@ -163,23 +152,30 @@ jobs:
         run: python3 notify.py private success
 
       - name: Publish release
-        if: success() && inputs.publish_release == 'true'
+        id: release_post
+        if: success() && (startsWith(inputs.request_source, 'telegram') || inputs.publish_release == 'true')
+        continue-on-error: true
         working-directory: toolbuild
         run: |
           echo "CURRENT_STAGE=release_notification" >> "$GITHUB_ENV"
           python3 notify.py release success
 
       - name: Request manual publish decision
-        if: success() && inputs.publish_release != 'true'
+        if: success() && !startsWith(inputs.request_source, 'telegram') && inputs.publish_release != 'true'
         working-directory: toolbuild
         run: python3 notify.py private publish_prompt
 
-      - name: Send failure notification
-        if: failure() && hashFiles('toolbuild/notify.py') != ''
+      - name: Send release notification failure
+        if: steps.release_post.outcome == 'failure'
         working-directory: toolbuild
-        run: python3 notify.py private fail "${CURRENT_STAGE:-unknown}"
+        run: python3 notify.py private fail release_notification
+
+      - name: Send failure notification
+        if: failure()
+        working-directory: toolbuild
+        run: python3 notify.py private fail
 
       - name: Send cancellation notification
-        if: cancelled() && hashFiles('toolbuild/notify.py') != ''
+        if: cancelled()
         working-directory: toolbuild
         run: python3 notify.py private fail cancelled
